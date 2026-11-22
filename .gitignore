@@ -1,0 +1,21 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+*.log
+
+# Copiados automáticamente desde models/ y node_modules por scripts/prepare-assets.mjs
+public/models/
+public/whisper/
+public/ort/
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# Local tooling
+.tools/
+src-tauri/resources/models/
+
+# Tauri Android generated
+src-tauri/gen/android/
