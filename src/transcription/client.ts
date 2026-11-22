@@ -15,7 +15,8 @@ export class Transcriber implements TranscriberLike {
   private readonly impl: TranscriberLike;
 
   constructor() {
-    this.impl = isTauri() ? new TauriTranscriber() : new WebTranscriber();
+    const android = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+    this.impl = isTauri() && !android ? new TauriTranscriber() : new WebTranscriber();
   }
 
   getState(): TranscriberState {

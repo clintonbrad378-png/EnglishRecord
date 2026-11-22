@@ -3,27 +3,27 @@ use std::{
     sync::Mutex,
 };
 
-#[cfg(feature = "whisper-rs")]
+#[cfg(not(target_os = "android"))]
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 pub struct TranscriberState(pub Mutex<Option<TranscriptionService>>);
 
-#[cfg(feature = "whisper-rs")]
+#[cfg(not(target_os = "android"))]
 pub struct TranscriptionService {
     tx: std::sync::mpsc::Sender<JobRequest>,
 }
 
-#[cfg(feature = "whisper-rs")]
+#[cfg(not(target_os = "android"))]
 pub struct JobRequest {
     pub audio: Vec<f32>,
     pub prompt: Option<String>,
     pub resp: std::sync::mpsc::Sender<Result<String, String>>,
 }
 
-#[cfg(not(feature = "whisper-rs"))]
+#[cfg(target_os = "android")]
 pub struct TranscriptionService;
 
-#[cfg(feature = "whisper-rs")]
+#[cfg(not(target_os = "android"))]
 impl TranscriptionService {
     pub fn new(model_path: PathBuf) -> Result<Self, String> {
         let (tx, rx) = std::sync::mpsc::channel::<JobRequest>();
@@ -65,7 +65,7 @@ impl TranscriptionService {
     }
 }
 
-#[cfg(feature = "whisper-rs")]
+#[cfg(not(target_os = "android"))]
 fn transcribe_with_ctx(ctx: &WhisperContext, audio: &[f32], prompt: Option<&str>) -> Result<String, String> {
     if audio.len() < 1600 {
         return Ok(String::new());
@@ -109,7 +109,7 @@ fn transcribe_with_ctx(ctx: &WhisperContext, audio: &[f32], prompt: Option<&str>
     Ok(sanitize(&out, audio.len() as f64 / 16000.0))
 }
 
-#[cfg(feature = "whisper-rs")]
+#[cfg(not(target_os = "android"))]
 fn available_threads() -> i32 {
     let n = std::thread::available_parallelism()
         .map(|n| n.get() as i32)
@@ -117,7 +117,7 @@ fn available_threads() -> i32 {
     (n - 1).clamp(1, 4)
 }
 
-#[cfg(feature = "whisper-rs")]
+#[cfg(not(target_os = "android"))]
 fn sanitize(text: &str, duration: f64) -> String {
     let cleaned = text
         .replace("[BLANK_AUDIO]", " ")
@@ -167,23 +167,9 @@ fn sanitize(text: &str, duration: f64) -> String {
     collapsed
 }
 
-#[cfg(not(feature = "whisper-rs"))]
-pub struct JobRequest {
-    pub audio: Vec<f32>,
-    pub prompt: Option<String>,
-    pub resp: std::sync::mpsc::Sender<Result<String, String>>,
-}
-
-#[cfg(not(feature = "whisper-rs"))]
+#[cfg(target_os = "android")]
 impl TranscriptionService {
     pub fn new(_model_path: PathBuf) -> Result<Self, String> {
         Ok(Self)
-    }
-
-    #[allow(dead_code)]
-    pub fn sender(&self) -> std::sync::mpsc::Sender<JobRequest> {
-        let (tx, rx) = std::sync::mpsc::channel::<JobRequest>();
-        std::mem::forget(rx);
-        tx
     }
 }

@@ -24,7 +24,4 @@ uuid = { version = "1", features = ["v4"] }
 tauri = { version = "2", features = ["custom-protocol"] }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
-whisper-rs = { version = "0.15", optional = true }
-
-[features]
-desktop = ["whisper-rs"]
+whisper-rs = "0.15"

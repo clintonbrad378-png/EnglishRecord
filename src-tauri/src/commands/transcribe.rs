@@ -65,16 +65,16 @@ pub async fn transcribe_audio(
         audio.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
     }
 
-    let _tx = {
-        let guard = state.0.lock().map_err(|_| "Estado del transcriptor inválido".to_string())?;
-        let service = guard
-            .as_ref()
-            .ok_or_else(|| "El transcriptor no está inicializado".to_string())?;
-        service.sender()
-    };
-
-    #[cfg(feature = "whisper-rs")]
+    #[cfg(not(target_os = "android"))]
     {
+        let tx = {
+            let guard = state.0.lock().map_err(|_| "Estado del transcriptor inválido".to_string())?;
+            let service = guard
+                .as_ref()
+                .ok_or_else(|| "El transcriptor no está inicializado".to_string())?;
+            service.sender()
+        };
+
         tauri::async_runtime::spawn_blocking(move || {
             let (resp_tx, resp_rx) = std::sync::mpsc::channel();
             tx.send(crate::transcription::JobRequest {
@@ -90,9 +90,9 @@ pub async fn transcribe_audio(
         .await
         .map_err(|e| format!("Error de transcripción: {e}"))?
     }
-    #[cfg(not(feature = "whisper-rs"))]
+    #[cfg(target_os = "android")]
     {
-        let _ = (prompt, audio);
-        Err("Transcripción no disponible en esta compilación".to_string())
+        let _ = (&state, prompt, audio);
+        Err("Transcripción no disponible en Android".to_string())
     }
 }
