@@ -19,3 +19,6 @@ src-tauri/resources/models/
 
 # Tauri Android generated
 src-tauri/gen/android/
+
+# APKs locales
+release/
