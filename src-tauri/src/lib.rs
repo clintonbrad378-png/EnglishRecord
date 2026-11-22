@@ -37,7 +37,8 @@ pub fn run() {
                             .join("ggml-base.en-q5_1.bin")
                     }
                 };
-                if let Ok(service) = transcription::TranscriptionService::new(model_path) {
+                let service = transcription::TranscriptionService::new(model_path);
+                if let Ok(service) = service {
                     if let Ok(mut guard) = state.0.lock() {
                         *guard = Some(service);
                     }

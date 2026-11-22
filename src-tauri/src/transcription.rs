@@ -1,24 +1,33 @@
 use std::{
     path::PathBuf,
-    sync::{mpsc, Mutex},
+    sync::Mutex,
 };
 
+#[cfg(feature = "whisper-rs")]
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
+pub struct TranscriberState(pub Mutex<Option<TranscriptionService>>);
+
+#[cfg(feature = "whisper-rs")]
 pub struct TranscriptionService {
-    tx: mpsc::Sender<JobRequest>,
+    tx: std::sync::mpsc::Sender<JobRequest>,
 }
 
+#[cfg(feature = "whisper-rs")]
 pub struct JobRequest {
     pub audio: Vec<f32>,
     pub prompt: Option<String>,
-    pub resp: mpsc::Sender<Result<String, String>>,
+    pub resp: std::sync::mpsc::Sender<Result<String, String>>,
 }
 
+#[cfg(not(feature = "whisper-rs"))]
+pub struct TranscriptionService;
+
+#[cfg(feature = "whisper-rs")]
 impl TranscriptionService {
     pub fn new(model_path: PathBuf) -> Result<Self, String> {
-        let (tx, rx) = mpsc::channel::<JobRequest>();
-        let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
+        let (tx, rx) = std::sync::mpsc::channel::<JobRequest>();
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<(), String>>();
 
         std::thread::Builder::new()
             .name("whisper-transcriber".into())
@@ -51,11 +60,12 @@ impl TranscriptionService {
         Ok(Self { tx })
     }
 
-    pub fn sender(&self) -> mpsc::Sender<JobRequest> {
+    pub fn sender(&self) -> std::sync::mpsc::Sender<JobRequest> {
         self.tx.clone()
     }
 }
 
+#[cfg(feature = "whisper-rs")]
 fn transcribe_with_ctx(ctx: &WhisperContext, audio: &[f32], prompt: Option<&str>) -> Result<String, String> {
     if audio.len() < 1600 {
         return Ok(String::new());
@@ -84,7 +94,6 @@ fn transcribe_with_ctx(ctx: &WhisperContext, audio: &[f32], prompt: Option<&str>
         .map_err(|e| format!("No se pudo transcribir el audio: {e}"))?;
 
     let n_segments = state.full_n_segments();
-
     let mut out = String::new();
     for i in 0..n_segments {
         let segment = state
@@ -100,6 +109,7 @@ fn transcribe_with_ctx(ctx: &WhisperContext, audio: &[f32], prompt: Option<&str>
     Ok(sanitize(&out, audio.len() as f64 / 16000.0))
 }
 
+#[cfg(feature = "whisper-rs")]
 fn available_threads() -> i32 {
     let n = std::thread::available_parallelism()
         .map(|n| n.get() as i32)
@@ -107,6 +117,7 @@ fn available_threads() -> i32 {
     (n - 1).clamp(1, 4)
 }
 
+#[cfg(feature = "whisper-rs")]
 fn sanitize(text: &str, duration: f64) -> String {
     let cleaned = text
         .replace("[BLANK_AUDIO]", " ")
@@ -128,7 +139,6 @@ fn sanitize(text: &str, duration: f64) -> String {
         .filter(|c| c.is_alphanumeric())
         .flat_map(|c| c.to_lowercase())
         .collect();
-
     if bare.is_empty() {
         return String::new();
     }
@@ -154,8 +164,26 @@ fn sanitize(text: &str, duration: f64) -> String {
     if (lower.starts_with("please subscribe") || lower.starts_with("subscribe")) && duration < 4.0 {
         return String::new();
     }
-
     collapsed
 }
 
-pub struct TranscriberState(pub Mutex<Option<TranscriptionService>>);
+#[cfg(not(feature = "whisper-rs"))]
+pub struct JobRequest {
+    pub audio: Vec<f32>,
+    pub prompt: Option<String>,
+    pub resp: std::sync::mpsc::Sender<Result<String, String>>,
+}
+
+#[cfg(not(feature = "whisper-rs"))]
+impl TranscriptionService {
+    pub fn new(_model_path: PathBuf) -> Result<Self, String> {
+        Ok(Self)
+    }
+
+    #[allow(dead_code)]
+    pub fn sender(&self) -> std::sync::mpsc::Sender<JobRequest> {
+        let (tx, rx) = std::sync::mpsc::channel::<JobRequest>();
+        std::mem::forget(rx);
+        tx
+    }
+}

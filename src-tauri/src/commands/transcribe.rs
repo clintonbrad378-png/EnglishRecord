@@ -33,9 +33,9 @@ pub async fn init_transcriber(app: AppHandle, state: State<'_, TranscriberState>
             return Ok(());
         }
     }
-    let app2 = app.clone();
+
+    let model_path = resolve_model_path(&app).unwrap_or_default();
     let service = tauri::async_runtime::spawn_blocking(move || {
-        let model_path = resolve_model_path(&app2)?;
         TranscriptionService::new(model_path)
     })
     .await
@@ -65,7 +65,7 @@ pub async fn transcribe_audio(
         audio.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
     }
 
-    let tx = {
+    let _tx = {
         let guard = state.0.lock().map_err(|_| "Estado del transcriptor inválido".to_string())?;
         let service = guard
             .as_ref()
@@ -73,18 +73,26 @@ pub async fn transcribe_audio(
         service.sender()
     };
 
-    tauri::async_runtime::spawn_blocking(move || {
-        let (resp_tx, resp_rx) = std::sync::mpsc::channel();
-        tx.send(crate::transcription::JobRequest {
-            audio,
-            prompt,
-            resp: resp_tx,
+    #[cfg(feature = "whisper-rs")]
+    {
+        tauri::async_runtime::spawn_blocking(move || {
+            let (resp_tx, resp_rx) = std::sync::mpsc::channel();
+            tx.send(crate::transcription::JobRequest {
+                audio,
+                prompt,
+                resp: resp_tx,
+            })
+            .map_err(|_| "El transcriptor no está disponible".to_string())?;
+            resp_rx
+                .recv()
+                .map_err(|_| "El transcriptor no respondió".to_string())?
         })
-        .map_err(|_| "El transcriptor no está disponible".to_string())?;
-        resp_rx
-            .recv()
-            .map_err(|_| "El transcriptor no respondió".to_string())?
-    })
-    .await
-    .map_err(|e| format!("Error de transcripción: {e}"))?
+        .await
+        .map_err(|e| format!("Error de transcripción: {e}"))?
+    }
+    #[cfg(not(feature = "whisper-rs"))]
+    {
+        let _ = (prompt, audio);
+        Err("Transcripción no disponible en esta compilación".to_string())
+    }
 }
