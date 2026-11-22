@@ -1,2 +1,2 @@
 [env]
-LIBCLANG_PATH = { value = "../../.tools/libclang-lib", relative = true }
+# LIBCLANG_PATH set locally via .tools; CI/Android should provide its own LIBCLANG_PATH.
