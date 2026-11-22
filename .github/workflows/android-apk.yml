@@ -61,9 +61,10 @@ jobs:
       - name: Set libclang path
         run: |
           sudo apt-get install -y llvm-dev libclang-dev clang
-          LIBCLANG=$(find /usr/lib -name 'libclang.so*' | head -n1 | xargs dirname)
-          echo "LIBCLANG_PATH=$LIBCLANG" >> $GITHUB_ENV
-          echo "LIBCLANG_PATH=$LIBCLANG"
+          LIBCLANG=$(dirname "$(find /usr/lib/llvm-* /usr/lib -name 'libclang.so' -o -name 'libclang.so.*' 2>/dev/null | head -n1)")
+          echo "LIBCLANG_PATH=$LIBCLANG" >> "$GITHUB_ENV"
+          echo "Resolved LIBCLANG_PATH=$LIBCLANG"
+          ls -la "$LIBCLANG"/libclang* | head -n 20
 
       - name: Install npm dependencies
         run: npm ci
@@ -94,6 +95,7 @@ jobs:
       - name: Build Android APK
         env:
           NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.3.13750724
+          LIBCLANG_PATH: ${{ env.LIBCLANG_PATH }}
         run: npm run tauri -- android build --apk --target aarch64
 
       - name: Upload APK artifact
