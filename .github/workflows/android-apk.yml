@@ -59,7 +59,11 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libclang-dev
 
       - name: Set libclang path
-        run: echo "LIBCLANG_PATH=/usr/lib/llvm-14/lib" >> $GITHUB_ENV
+        run: |
+          sudo apt-get install -y llvm-dev libclang-dev clang
+          LIBCLANG=$(find /usr/lib -name 'libclang.so*' | head -n1 | xargs dirname)
+          echo "LIBCLANG_PATH=$LIBCLANG" >> $GITHUB_ENV
+          echo "LIBCLANG_PATH=$LIBCLANG"
 
       - name: Install npm dependencies
         run: npm ci
