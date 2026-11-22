@@ -93,11 +93,13 @@ export class EnergyVad implements VadEngine {
   readonly label = 'energy';
   private floor = 0.0035;
 
+  constructor(private readonly minThreshold = 0.009) {}
+
   process(window: Float32Array): number {
     let sum = 0;
     for (let i = 0; i < window.length; i += 1) sum += window[i] * window[i];
     const rms = Math.sqrt(sum / Math.max(1, window.length));
-    const threshold = Math.max(0.009, this.floor * 3.4);
+    const threshold = Math.max(this.minThreshold, this.floor * 3.4);
     if (rms < threshold) {
       this.floor = this.floor * 0.985 + rms * 0.015;
     }

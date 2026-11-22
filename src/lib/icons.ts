@@ -8,6 +8,7 @@ type IconName =
   | 'more'
   | 'copy'
   | 'download'
+  | 'upload'
   | 'trash'
   | 'pencil'
   | 'settings'
@@ -35,6 +36,7 @@ const paths: Record<IconName, string> = {
   more: '<circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
   copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="3"/><path d="M15.5 8.5V7a2.5 2.5 0 0 0-2.5-2.5H7A2.5 2.5 0 0 0 4.5 7v6a2.5 2.5 0 0 0 2.5 2.5h2"/>',
   download: '<path d="M12 4v11"/><path d="M7.5 10.5 12 15l4.5-4.5"/><path d="M5 19.5h14"/>',
+  upload: '<path d="M12 16V5"/><path d="M7.5 9.5 12 5l4.5 4.5"/><path d="M5 19.5h14"/>',
   trash: '<path d="M4.5 7h15"/><path d="M9.5 7V5.5A1.5 1.5 0 0 1 11 4h2a1.5 1.5 0 0 1 1.5 1.5V7"/><path d="M6.5 7l.8 11a2 2 0 0 0 2 1.9h5.4a2 2 0 0 0 2-1.9l.8-11"/><path d="M10 11v5.5M14 11v5.5"/>',
   pencil: '<path d="M4.5 19.5l4.2-1 10-10a2.1 2.1 0 0 0-3-3l-10 10z"/><path d="M13.8 6.6l3.6 3.6"/>',
   settings: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',

@@ -10,10 +10,11 @@ import {
   saveMeta,
 } from './lib/storage';
 import { decodeWav } from './lib/wav';
-import { RecordingSession } from './session';
+import { decodeAudioFile, ImportSession } from './import';
+import { RecordingSession, type TranscriptSession } from './session';
 import { Transcriber } from './transcription/client';
 import type { RecordingMeta, Route, TranscriberState, TranscriptChunk } from './types';
-import { confirmDialog, toast } from './ui/dialog';
+import { confirmDialog, showBusy, toast } from './ui/dialog';
 import { DetailView } from './ui/detail';
 import { HomeView } from './ui/home';
 import { RecordView } from './ui/record';
@@ -44,9 +45,11 @@ export class App {
   private settingsView: SettingsView | null = null;
 
   private activeSession: RecordingSession | null = null;
-  private readonly sessions = new Map<string, RecordingSession>();
+  private readonly sessions = new Map<string, TranscriptSession>();
   private readonly sessionUnsubs = new Map<string, () => void>();
   private readonly cleanups: Array<() => void> = [];
+  private fileInput: HTMLInputElement | null = null;
+  private fileResolve: ((file: File | null) => void) | null = null;
 
   private routeToken = 0;
   private homeRefreshTimer = 0;
@@ -126,6 +129,10 @@ export class App {
     this.sessionUnsubs.clear();
     this.currentView?.dispose();
     this.currentView = null;
+    this.fileResolve?.(null);
+    this.fileResolve = null;
+    this.fileInput?.remove();
+    this.fileInput = null;
     this.transcriber.dispose();
   }
 
@@ -232,6 +239,9 @@ export class App {
     const view = new HomeView({
       onRecord: () => {
         void this.beginRecording();
+      },
+      onImport: () => {
+        void this.importAudio();
       },
       onOpen: (id) => this.navigate({ name: 'detail', id }),
       onSettings: () => this.navigate({ name: 'settings' }),
@@ -358,6 +368,61 @@ export class App {
     }
   }
 
+  private async importAudio(): Promise<void> {
+    const file = await this.pickAudioFile();
+    if (!file) return;
+
+    const close = showBusy('Preparando el audio…');
+    try {
+      const { samples } = await decodeAudioFile(file);
+      const session = new ImportSession({
+        transcriber: this.transcriber,
+        samples,
+        title: file.name,
+      });
+      const meta = await session.start();
+      this.sessions.set(meta.id, session);
+      this.watchSession(session);
+      close();
+      this.navigate({ name: 'detail', id: meta.id });
+    } catch (error) {
+      close();
+      toast(error instanceof Error ? error.message : 'No se pudo importar el audio.', { icon: 'info' });
+    }
+  }
+
+  private pickAudioFile(): Promise<File | null> {
+    if (!this.fileInput) {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'audio/*,.m4a,.mp3,.wav,.aac,.ogg,.opus';
+      input.hidden = true;
+      input.addEventListener('change', () => {
+        const file = input.files?.[0] ?? null;
+        input.value = '';
+        const resolve = this.fileResolve;
+        this.fileResolve = null;
+        resolve?.(file);
+      });
+      input.addEventListener('cancel', () => {
+        const resolve = this.fileResolve;
+        this.fileResolve = null;
+        resolve?.(null);
+      });
+      document.body.appendChild(input);
+      this.fileInput = input;
+    }
+
+    const input = this.fileInput;
+    if (!input) return Promise.resolve(null);
+
+    return new Promise<File | null>((resolve) => {
+      this.fileResolve?.(null);
+      this.fileResolve = resolve;
+      input.click();
+    });
+  }
+
   private async togglePause(): Promise<void> {
     if (!this.activeSession) return;
     try {
@@ -424,7 +489,7 @@ export class App {
     return Array.from(merged.values()).sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  private watchSession(session: RecordingSession): void {
+  private watchSession(session: TranscriptSession): void {
     if (this.sessionUnsubs.has(session.id)) return;
     const unsubscribe = session.subscribe(() => {
       if (this.currentRoute.name !== 'home') return;
@@ -481,6 +546,7 @@ export class App {
     if (session && session.pending > 0) {
       throw new Error('Espera a que termine la transcripción en curso.');
     }
+    if (session?.retranscribe) return session.retranscribe();
     const blob = session?.audioBlob ?? (await getAudio(id));
     if (!blob) throw new Error('No se encontró el audio de la grabación.');
 

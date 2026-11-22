@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { TranscriberState, TranscriberStatus } from '../types';
 
+const JOB_TIMEOUT_MS = 15 * 60 * 1000;
+
 interface Job {
   id: number;
   audio: Float32Array;
@@ -53,9 +55,7 @@ export class TauriTranscriber {
         prompt,
         resolve,
         reject,
-        timer: window.setTimeout(() => {
-          this.failJob(job, new Error('La transcripción tardó demasiado.'));
-        }, 5 * 60 * 1000),
+        timer: 0,
       };
       this.queue.push(job);
       this.emitPending();
@@ -111,6 +111,10 @@ export class TauriTranscriber {
     const job = this.queue.shift();
     if (!job) return;
     this.current = job;
+    job.timer = window.setTimeout(() => {
+      this.failJob(job, new Error('La transcripción tardó demasiado.'));
+      this.pump();
+    }, JOB_TIMEOUT_MS);
     this.emitPending();
 
     void invoke<string>('transcribe_audio', {

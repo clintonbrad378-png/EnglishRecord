@@ -1,4 +1,4 @@
-const CACHE = 'english-record-static-v1';
+const CACHE = 'english-record-static-v2';
 const scope = self.registration.scope;
 const ISOLATION_HEADERS = {
   'Cross-Origin-Embedder-Policy': 'require-corp',
@@ -38,11 +38,10 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  if (
-    url.pathname.includes('/models/') ||
-    url.pathname.includes('/whisper/') ||
-    url.pathname.includes('/ort/')
-  ) {
+  if (url.pathname.includes('/models/')) return;
+
+  if (url.pathname.includes('/whisper/') || url.pathname.includes('/ort/')) {
+    event.respondWith(networkWithIsolation(request));
     return;
   }
 
@@ -92,6 +91,15 @@ async function staleWhileRevalidate(request, event) {
   const response = await network;
   if (response) return withIsolation(response);
   return new Response('', { status: 504, statusText: 'Sin conexión' });
+}
+
+async function networkWithIsolation(request) {
+  try {
+    const response = await fetch(request);
+    return withIsolation(response);
+  } catch {
+    return new Response('', { status: 504, statusText: 'Sin conexión' });
+  }
 }
 
 function withIsolation(response) {

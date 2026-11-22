@@ -1,7 +1,7 @@
 import { formatDateLong, formatDuration, formatTimeOfDay, sanitizeFilename } from '../lib/format';
 import { q } from '../lib/dom';
 import { icon } from '../lib/icons';
-import type { RecordingSession } from '../session';
+import type { TranscriptSession } from '../session';
 import type { RecordingMeta, TranscriberState, TranscriptChunk } from '../types';
 import { actionSheet, confirmDialog, promptDialog, showBusy, toast } from './dialog';
 
@@ -20,7 +20,7 @@ export class DetailView {
   private meta: RecordingMeta;
   private readonly audio: HTMLAudioElement;
   private readonly audioUrl: string;
-  private readonly session: RecordingSession | null;
+  private readonly session: TranscriptSession | null;
   private readonly callbacks: DetailCallbacks;
   private readonly titleElement: HTMLElement;
   private readonly subtitleElement: HTMLElement;
@@ -42,7 +42,7 @@ export class DetailView {
   constructor(
     meta: RecordingMeta,
     blob: Blob,
-    session: RecordingSession | null,
+    session: TranscriptSession | null,
     transcriber: TranscriberState,
     callbacks: DetailCallbacks,
   ) {

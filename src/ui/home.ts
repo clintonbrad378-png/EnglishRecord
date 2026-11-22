@@ -6,6 +6,7 @@ import type { EffectiveTheme } from './theme';
 
 interface HomeCallbacks {
   onRecord: () => void;
+  onImport: () => void;
   onOpen: (id: string) => void;
   onSettings: () => void;
   onToggleTheme: () => void;
@@ -49,7 +50,10 @@ export class HomeView {
             <p class="eyebrow">Tu biblioteca</p>
             <h2>Grabaciones</h2>
           </div>
-          <span class="recordings-count" data-role="count">0</span>
+          <div class="section-actions">
+            <span class="recordings-count" data-role="count">0</span>
+            <button class="btn btn-quiet" data-action="import">${icon('upload', 15)}<span>Importar</span></button>
+          </div>
         </div>
 
         <div class="tabs" role="tablist" aria-label="Filtrar grabaciones">
@@ -87,6 +91,10 @@ export class HomeView {
       const action = target.closest<HTMLElement>('[data-action]')?.dataset.action;
       if (action === 'record') {
         this.callbacks.onRecord();
+        return;
+      }
+      if (action === 'import') {
+        this.callbacks.onImport();
         return;
       }
       if (action === 'settings' || action === 'status') {
@@ -289,7 +297,10 @@ export class HomeView {
         </div>
         <h3>Tu primera grabación<br />empieza con una idea</h3>
         <p>Habla en inglés y la transcripción aparecerá aquí, en tiempo real y sin enviar tu voz a ningún servidor.</p>
-        <button class="btn btn-primary" data-action="record">${icon('mic', 18, 2)} Grabar ahora</button>
+        <div class="empty-actions">
+          <button class="btn btn-primary" data-action="record">${icon('mic', 18, 2)} Grabar ahora</button>
+          <button class="btn btn-ghost" data-action="import">${icon('upload', 18, 2)} Importar audio</button>
+        </div>
       </div>
     `;
   }

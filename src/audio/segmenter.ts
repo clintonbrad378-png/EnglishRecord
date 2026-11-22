@@ -2,12 +2,12 @@ import { EnergyVad, type VadEngine } from './vad';
 
 const SAMPLE_RATE = 16000;
 const HOP = 512;
-const RING_WINDOWS = 10; // 320 ms
+const RING_WINDOWS = 16; // 512 ms de contexto previo
 const START_HITS = 2;
-const SILENCE_HITS = 19; // ~608 ms
-const MIN_SPEECH_SAMPLES = Math.round(0.35 * SAMPLE_RATE);
+const SILENCE_HITS = 40; // ~1.28 s: evita trocear frases con pausas normales
+const MIN_SPEECH_SAMPLES = Math.round(0.6 * SAMPLE_RATE);
 const MAX_SEGMENT_SAMPLES = Math.round(14 * SAMPLE_RATE);
-const TAIL_SAMPLES = Math.round(0.16 * SAMPLE_RATE);
+const TAIL_SAMPLES = Math.round(0.24 * SAMPLE_RATE);
 const POSITIVE = 0.5;
 const NEGATIVE = 0.35;
 

@@ -20,7 +20,20 @@ interface WakeLockSentinelLike {
   addEventListener: (type: 'release', listener: () => void) => void;
 }
 
-export class RecordingSession {
+export interface TranscriptSession {
+  readonly id: string;
+  readonly meta: RecordingMeta | null;
+  readonly audioBlob: Blob | null;
+  readonly pending: number;
+  subscribe(listener: () => void): () => void;
+  rename(title: string): Promise<void>;
+  setStarred(starred: boolean): Promise<void>;
+  replaceTranscript(transcript: TranscriptChunk[]): Promise<RecordingMeta>;
+  retranscribe?(): Promise<RecordingMeta>;
+  markDeleted(): void;
+}
+
+export class RecordingSession implements TranscriptSession {
   readonly id: string;
   readonly createdAt: number;
 

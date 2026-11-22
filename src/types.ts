@@ -3,7 +3,7 @@ export interface TranscriptChunk {
   text: string;
   t0: number;
   t1: number;
-  source?: 'live' | 'manual';
+  source?: 'live' | 'manual' | 'import';
 }
 
 export interface RecordingMeta {
