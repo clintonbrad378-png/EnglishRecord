@@ -34,7 +34,7 @@ async function initialize(message: InitRequest): Promise<void> {
     cacheModel: true,
   });
   ready = true;
-  post({ type: 'ready', threads });
+  post({ type: 'ready', threads, engine: 'wasm' });
 }
 
 async function transcribe(message: TranscribeRequest): Promise<void> {
@@ -55,6 +55,7 @@ async function transcribe(message: TranscribeRequest): Promise<void> {
       translate: false,
       tokenTimestamps: false,
       temperature: 0,
+      temperatureInc: 0,
       maxThreads: threads,
       maxLen: 80,
       prompt: message.prompt,

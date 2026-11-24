@@ -3,6 +3,13 @@ import type { TranscriberState, TranscriberStatus } from '../types';
 
 const JOB_TIMEOUT_MS = 15 * 60 * 1000;
 
+interface TranscriberInfo {
+  engine: 'native' | 'wasm';
+  threads: number;
+  model: string;
+  modelLoadMs: number;
+}
+
 interface Job {
   id: number;
   audio: Float32Array;
@@ -94,9 +101,16 @@ export class TauriTranscriber {
   private async init(): Promise<void> {
     this.setState({ ...this.state, status: 'loading', error: undefined });
     try {
-      await invoke('init_transcriber');
+      const info = await invoke<TranscriberInfo>('init_transcriber');
       if (this.disposed) return;
-      this.setState({ status: 'ready', pending: this.pendingCount() });
+      this.setState({
+        status: 'ready',
+        pending: this.pendingCount(),
+        engine: info.engine,
+        threads: info.threads,
+        model: info.model,
+        modelLoadMs: info.modelLoadMs,
+      });
       this.pump();
     } catch (error) {
       if (this.disposed) return;
@@ -117,6 +131,7 @@ export class TauriTranscriber {
     }, JOB_TIMEOUT_MS);
     this.emitPending();
 
+    const started = performance.now();
     void invoke<string>('transcribe_audio', {
       audioBase64: toBase64(job.audio),
       prompt: job.prompt ?? null,
@@ -125,6 +140,11 @@ export class TauriTranscriber {
         if (this.current?.id !== job.id) return;
         this.current = null;
         clearTimeout(job.timer);
+        this.setState({
+          status: this.state.status,
+          lastTranscriptionMs: Math.round(performance.now() - started),
+          lastAudioSec: job.audio.length / 16000,
+        });
         job.resolve(text);
         this.emitPending();
         this.pump();
@@ -170,7 +190,13 @@ export class TauriTranscriber {
     if (
       merged.status === this.state.status &&
       merged.pending === this.state.pending &&
-      merged.error === this.state.error
+      merged.error === this.state.error &&
+      merged.engine === this.state.engine &&
+      merged.threads === this.state.threads &&
+      merged.model === this.state.model &&
+      merged.modelLoadMs === this.state.modelLoadMs &&
+      merged.lastTranscriptionMs === this.state.lastTranscriptionMs &&
+      merged.lastAudioSec === this.state.lastAudioSec
     ) {
       return;
     }

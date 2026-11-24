@@ -10,7 +10,7 @@ import {
   saveMeta,
 } from './lib/storage';
 import { decodeWav } from './lib/wav';
-import { decodeAudioFile, ImportSession } from './import';
+import { decodeAudioFile, findSpeechChunks, ImportSession, resampleLinear } from './import';
 import { RecordingSession, type TranscriptSession } from './session';
 import { Transcriber } from './transcription/client';
 import type { RecordingMeta, Route, TranscriberState, TranscriptChunk } from './types';
@@ -551,29 +551,38 @@ export class App {
     if (!blob) throw new Error('No se encontró el audio de la grabación.');
 
     const { samples, sampleRate } = decodeWav(await blob.arrayBuffer());
-    const raw = await this.transcriber.transcribe(samples);
-    const text = cleanTranscriptText(raw);
-    if (!text) throw new Error('No se detectó voz en la grabación.');
+    const mono = sampleRate === 16000 ? samples : resampleLinear(samples, sampleRate, 16000);
+    const chunks = await findSpeechChunks(mono);
+    const ranges = chunks.length > 0 ? chunks : [{ start: 0, end: mono.length }];
+    const transcript: TranscriptChunk[] = [];
+    let seq = 0;
+    for (const range of ranges) {
+      const audio = mono.slice(range.start, range.end);
+      const prompt = transcript.map((item) => item.text).join(' ').slice(-180);
+      const raw = await this.transcriber.transcribe(audio, prompt || undefined);
+      const text = cleanTranscriptText(raw);
+      if (!text) continue;
+      transcript.push({
+        id: `manual-${Date.now().toString(36)}-${++seq}`,
+        text,
+        t0: range.start / 16000,
+        t1: range.end / 16000,
+        source: 'manual',
+      });
+    }
+    if (transcript.length === 0) throw new Error('No se detectó voz en la grabación.');
 
     const base = session?.meta ?? (await getMeta(id));
     if (!base) throw new Error('La grabación no existe.');
-    const duration = samples.length / sampleRate;
-    const chunk: TranscriptChunk = {
-      id: `manual-${Date.now().toString(36)}`,
-      text,
-      t0: 0,
-      t1: duration,
-      source: 'manual',
-    };
+    const fullText = transcript.map((c) => c.text).join(' ');
+    if (session) return session.replaceTranscript(transcript);
 
-    if (session) return session.replaceTranscript([chunk]);
-
-    const title = base.title.startsWith('Grabación') ? makeTitle(text, base.createdAt) : base.title;
+    const title = base.title.startsWith('Grabación') ? makeTitle(fullText, base.createdAt) : base.title;
     const next: RecordingMeta = {
       ...base,
       title,
-      transcript: [chunk],
-      wordCount: countWords(text),
+      transcript,
+      wordCount: countWords(fullText),
       transcribed: true,
       hadSpeech: true,
     };

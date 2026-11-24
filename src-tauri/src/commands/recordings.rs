@@ -8,14 +8,16 @@ fn data_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
         .path()
         .app_data_dir()
         .map_err(|e| format!("No se pudo resolver el directorio de datos: {e}"))?;
-    storage::ensure_dirs(&dir).map_err(|e| format!("No se pudo crear el directorio de datos: {e}"))?;
+    storage::ensure_dirs(&dir)
+        .map_err(|e| format!("No se pudo crear el directorio de datos: {e}"))?;
     Ok(dir)
 }
 
 #[tauri::command]
 pub fn list_recordings(app: AppHandle) -> Result<Vec<RecordingMeta>, String> {
     let dir = data_dir(&app)?;
-    storage::list_recordings(&dir).map_err(|e| format!("No se pudieron listar las grabaciones: {e}"))
+    storage::list_recordings(&dir)
+        .map_err(|e| format!("No se pudieron listar las grabaciones: {e}"))
 }
 
 #[tauri::command]
@@ -27,7 +29,8 @@ pub fn get_recording(app: AppHandle, id: String) -> Result<Option<RecordingMeta>
 #[tauri::command]
 pub fn get_audio_base64(app: AppHandle, id: String) -> Result<Option<String>, String> {
     let dir = data_dir(&app)?;
-    let bytes = storage::get_audio(&dir, &id).map_err(|e| format!("No se pudo leer el audio: {e}"))?;
+    let bytes =
+        storage::get_audio(&dir, &id).map_err(|e| format!("No se pudo leer el audio: {e}"))?;
     Ok(bytes.map(|b| STANDARD.encode(b)))
 }
 
@@ -59,7 +62,8 @@ pub fn save_meta(app: AppHandle, meta: RecordingMeta) -> Result<(), String> {
 #[tauri::command]
 pub fn delete_recording(app: AppHandle, id: String) -> Result<(), String> {
     let dir = data_dir(&app)?;
-    storage::delete_recording(&dir, &id).map_err(|e| format!("No se pudo eliminar la grabación: {e}"))
+    storage::delete_recording(&dir, &id)
+        .map_err(|e| format!("No se pudo eliminar la grabación: {e}"))
 }
 
 #[tauri::command]

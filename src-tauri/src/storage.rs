@@ -61,7 +61,11 @@ pub fn ensure_dirs(base: &Path) -> std::io::Result<()> {
     fs::create_dir_all(recordings_dir(base))
 }
 
-pub fn save_recording(base: &Path, meta: &RecordingMeta, audio: Option<&[u8]>) -> std::io::Result<()> {
+pub fn save_recording(
+    base: &Path,
+    meta: &RecordingMeta,
+    audio: Option<&[u8]>,
+) -> std::io::Result<()> {
     ensure_dirs(base)?;
     let meta_json = serde_json::to_vec_pretty(meta).map_err(std::io::Error::other)?;
     fs::write(meta_path(base, &meta.id), meta_json)?;
@@ -104,7 +108,9 @@ pub fn list_recordings(base: &Path) -> std::io::Result<Vec<RecordingMeta>> {
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
         }
-        match fs::read(&path).and_then(|b| serde_json::from_slice(&b).map_err(std::io::Error::other)) {
+        match fs::read(&path)
+            .and_then(|b| serde_json::from_slice(&b).map_err(std::io::Error::other))
+        {
             Ok(meta) => items.push(meta),
             Err(_) => continue,
         }

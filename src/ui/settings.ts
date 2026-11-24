@@ -79,11 +79,12 @@ export class SettingsView {
           <div class="settings-card">
             <div class="model-card" data-role="model"></div>
             <div class="setting-list">
-              <div class="setting-line"><span>Modelo</span><strong>Whisper base.en · q5_1</strong></div>
+              <div class="setting-line" data-role="model-line"><span>Modelo</span><strong>Whisper base.en · q5_1</strong></div>
               <div class="setting-line"><span>Idioma</span><strong>Inglés</strong></div>
               <div class="setting-line"><span>Detección de voz</span><strong>Silero VAD</strong></div>
-              <div class="setting-line"><span>Procesamiento</span><strong>En el dispositivo</strong></div>
-              <div class="setting-line"><span>Rendimiento</span><strong>${window.crossOriginIsolated ? 'Multihilo' : 'Modo compatible'}</strong></div>
+              <div class="setting-line" data-role="engine-line"><span>Procesamiento</span><strong>En el dispositivo</strong></div>
+              <div class="setting-line" data-role="perf-line"><span>Rendimiento</span><strong>Detectando…</strong></div>
+              <div class="setting-line" data-role="last-line"><span>Última transcripción</span><strong>—</strong></div>
             </div>
           </div>
         </section>
@@ -128,7 +129,7 @@ export class SettingsView {
           <div class="privacy-icon">${icon('sparkle', 21)}</div>
           <div>
             <h3>Privacidad por diseño</h3>
-            <p>El audio se procesa con modelos locales en tu navegador. Ninguna grabación, transcripción o dato se envía a un servidor.</p>
+            <p>El audio se procesa con modelos locales en tu dispositivo. Ninguna grabación, transcripción o dato se envía a un servidor.</p>
           </div>
         </section>
 
@@ -197,21 +198,45 @@ export class SettingsView {
             : 'is-idle';
 
     this.modelCard.className = `model-card ${className}`;
+    const engineLine = this.element.querySelector('[data-role="engine-line"] strong');
+    const perfLine = this.element.querySelector('[data-role="perf-line"] strong');
+    const lastLine = this.element.querySelector('[data-role="last-line"] strong');
+    const engineLabel = state.engine === 'native' ? 'Nativo (en el dispositivo)' : state.engine === 'wasm' ? 'WASM (en el navegador)' : 'En el dispositivo';
+    if (engineLine) engineLine.textContent = engineLabel;
+    if (perfLine) {
+      if (state.status === 'ready') {
+        const threads = state.threads ? `${state.threads} ${state.threads === 1 ? 'hilo' : 'hilos'}` : '—';
+        const load = state.modelLoadMs ? ` · modelo ${(state.modelLoadMs / 1000).toFixed(1)} s` : '';
+        perfLine.textContent = `${threads}${load}`;
+      } else if (state.status === 'loading') {
+        perfLine.textContent = 'Cargando modelo…';
+      } else {
+        perfLine.textContent = state.engine === 'wasm' ? (window.crossOriginIsolated ? 'Multihilo' : 'Modo compatible') : '—';
+      }
+    }
+    if (lastLine) {
+      if (state.lastTranscriptionMs && state.lastAudioSec) {
+        lastLine.textContent = `${state.lastAudioSec.toFixed(1)} s audio / ${(state.lastTranscriptionMs / 1000).toFixed(2)} s`;
+      } else {
+        lastLine.textContent = '—';
+      }
+    }
+
     if (state.status === 'ready') {
       this.modelCard.innerHTML = `
         <span class="status-dot"></span>
         <div class="model-copy">
           <strong>Transcripción lista</strong>
-          <p>El modelo está cargado y funciona en tu dispositivo.</p>
+          <p>${state.engine === 'native' ? 'Motor nativo cargado en tu dispositivo.' : 'Modelo WASM cargado y funcionando en tu dispositivo.'}</p>
         </div>
-        <span class="status-chip">EN</span>
+        <span class="status-chip">${state.engine === 'native' ? 'NATIVO' : 'EN'}</span>
       `;
     } else if (state.status === 'loading') {
       this.modelCard.innerHTML = `
         <span class="status-dot"></span>
         <div class="model-copy">
           <strong>Preparando el modelo</strong>
-          <p>La primera vez puede tardar unos segundos.</p>
+          <p>${state.engine === 'native' ? 'Cargando el motor nativo… puede tardar unos segundos la primera vez.' : 'La primera vez puede tardar unos segundos.'}</p>
         </div>
         <span class="spinner tiny"></span>
       `;

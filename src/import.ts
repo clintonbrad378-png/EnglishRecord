@@ -9,7 +9,7 @@ import type { RecordingMeta, TranscriptChunk } from './types';
 
 const SAMPLE_RATE = 16000;
 const MAX_CHUNK_SAMPLES = 30 * SAMPLE_RATE;
-const MAX_MERGE_GAP_SAMPLES = Math.round(1.5 * SAMPLE_RATE);
+const MAX_MERGE_GAP_SAMPLES = Math.round(3 * SAMPLE_RATE);
 const MAX_IMPORT_SECONDS = 20 * 60;
 const MAX_FILE_BYTES = 80 * 1024 * 1024;
 const SILENCE_RMS = 0.002;
@@ -290,7 +290,7 @@ export class ImportSession implements TranscriptSession {
   }
 }
 
-async function findSpeechChunks(samples: Float32Array): Promise<ChunkRange[]> {
+export async function findSpeechChunks(samples: Float32Array): Promise<ChunkRange[]> {
   const segments: Array<{ startSample: number; endSample: number }> = [];
   const segmenter = new SpeechSegmenter({
     vad: new EnergyVad(0.004),
@@ -374,7 +374,7 @@ function downmixToMono(buffer: AudioBuffer): Float32Array {
   return first;
 }
 
-function resampleLinear(input: Float32Array, from: number, to: number): Float32Array {
+export function resampleLinear(input: Float32Array, from: number, to: number): Float32Array {
   if (from === to) return input;
   const ratio = from / to;
   const length = Math.max(1, Math.floor(input.length / ratio));

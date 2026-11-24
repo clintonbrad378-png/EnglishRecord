@@ -22,6 +22,7 @@ export class WebTranscriber {
   private disposed = false;
 
   constructor() {
+    this.state = { status: 'idle', pending: 0, engine: 'wasm' };
     this.spawn();
   }
 
@@ -109,7 +110,12 @@ export class WebTranscriber {
 
   private handleMessage(message: WorkerResponse): void {
     if (message.type === 'ready') {
-      this.setState({ status: 'ready', pending: this.pendingCount() });
+      this.setState({
+        status: 'ready',
+        pending: this.pendingCount(),
+        engine: message.engine ?? 'wasm',
+        threads: message.threads,
+      });
       this.pump();
       return;
     }
@@ -127,9 +133,16 @@ export class WebTranscriber {
     }
 
     if (message.type === 'result' && this.current?.id === message.id) {
-      const job = this.current;
+      const job = this.current as Job & { started?: number; audioSeconds?: number };
       this.current = null;
       clearTimeout(job.timer);
+      if (job.started) {
+        this.setState({
+          status: this.state.status,
+          lastTranscriptionMs: Math.round(performance.now() - job.started),
+          lastAudioSec: job.audioSeconds ?? message.duration,
+        });
+      }
       job.resolve(message.text);
       this.emitPending();
       this.pump();
@@ -155,7 +168,12 @@ export class WebTranscriber {
       audio,
       prompt: job.prompt,
     };
+    const started = performance.now();
+    const audioSeconds = job.audio.length / 16000;
     this.worker.postMessage(message, [audio]);
+    // timing stored on result in handleMessage; keep started/audioSeconds via closure
+    (job as Job & { started?: number; audioSeconds?: number }).started = started;
+    (job as Job & { started?: number; audioSeconds?: number }).audioSeconds = audioSeconds;
   }
 
   private failJob(job: Job, error: Error): void {
@@ -192,7 +210,13 @@ export class WebTranscriber {
     if (
       merged.status === this.state.status &&
       merged.pending === this.state.pending &&
-      merged.error === this.state.error
+      merged.error === this.state.error &&
+      merged.engine === this.state.engine &&
+      merged.threads === this.state.threads &&
+      merged.model === this.state.model &&
+      merged.modelLoadMs === this.state.modelLoadMs &&
+      merged.lastTranscriptionMs === this.state.lastTranscriptionMs &&
+      merged.lastAudioSec === this.state.lastAudioSec
     ) {
       return;
     }

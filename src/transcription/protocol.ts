@@ -16,6 +16,7 @@ export type WorkerRequest = InitRequest | TranscribeRequest;
 export interface ReadyMessage {
   type: 'ready';
   threads: number;
+  engine?: 'wasm';
 }
 
 export interface ResultMessage {

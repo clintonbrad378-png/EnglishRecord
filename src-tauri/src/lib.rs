@@ -1,9 +1,11 @@
+#[cfg(target_os = "android")]
+mod android_assets;
 mod commands;
 mod storage;
 mod transcription;
 
 use std::sync::Mutex;
-use tauri::{Manager, webview::{PermissionKind, PermissionResponse}};
+use tauri::webview::{PermissionKind, PermissionResponse};
 
 use transcription::TranscriberState;
 
@@ -17,34 +19,6 @@ pub fn run() {
             | PermissionKind::DisplayCapture
             | PermissionKind::Autoplay => PermissionResponse::Allow,
             _ => PermissionResponse::Default,
-        })
-        .setup(|app| {
-            let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                let state = handle.state::<TranscriberState>();
-                let model_path = {
-                    let resource = handle
-                        .path()
-                        .resource_dir()
-                        .ok()
-                        .map(|p| p.join("models").join("ggml-base.en-q5_1.bin"));
-                    if let Some(p) = resource.filter(|p| p.exists()) {
-                        p
-                    } else {
-                        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                            .join("resources")
-                            .join("models")
-                            .join("ggml-base.en-q5_1.bin")
-                    }
-                };
-                let service = transcription::TranscriptionService::new(model_path);
-                if let Ok(service) = service {
-                    if let Ok(mut guard) = state.0.lock() {
-                        *guard = Some(service);
-                    }
-                }
-            });
-            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::recordings::list_recordings,

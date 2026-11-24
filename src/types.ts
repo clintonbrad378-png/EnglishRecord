@@ -21,11 +21,18 @@ export interface RecordingMeta {
 }
 
 export type TranscriberStatus = 'idle' | 'loading' | 'ready' | 'error';
+export type TranscriberEngine = 'native' | 'wasm';
 
 export interface TranscriberState {
   status: TranscriberStatus;
   error?: string;
   pending: number;
+  engine?: TranscriberEngine;
+  threads?: number;
+  model?: string;
+  modelLoadMs?: number;
+  lastTranscriptionMs?: number;
+  lastAudioSec?: number;
 }
 
 export type Route =

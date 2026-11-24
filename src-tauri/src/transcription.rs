@@ -1,72 +1,195 @@
 use std::{
     path::PathBuf,
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc, Mutex,
+    },
+    thread,
+    time::Duration,
 };
 
-#[cfg(not(target_os = "android"))]
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+use serde::Serialize;
+use whisper_rs::{
+    FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState,
+};
+
+#[cfg(target_os = "android")]
+use crate::android_assets::read_android_asset;
 
 pub struct TranscriberState(pub Mutex<Option<TranscriptionService>>);
 
-#[cfg(not(target_os = "android"))]
-pub struct TranscriptionService {
-    tx: std::sync::mpsc::Sender<JobRequest>,
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranscriberInfo {
+    pub engine: String,
+    pub threads: i32,
+    pub model: String,
+    pub model_load_ms: u64,
 }
 
-#[cfg(not(target_os = "android"))]
-pub struct JobRequest {
+#[derive(Clone, Debug)]
+pub enum ModelSource {
+    Path(PathBuf),
+    AndroidAsset(&'static str),
+}
+
+pub(crate) struct JobRequest {
     pub audio: Vec<f32>,
     pub prompt: Option<String>,
-    pub resp: std::sync::mpsc::Sender<Result<String, String>>,
+    pub resp: mpsc::Sender<Result<String, String>>,
 }
 
-#[cfg(target_os = "android")]
-pub struct TranscriptionService;
+pub struct TranscriptionService {
+    tx: Option<mpsc::Sender<JobRequest>>,
+    ready: Arc<AtomicBool>,
+    info: Option<TranscriberInfo>,
+}
 
-#[cfg(not(target_os = "android"))]
 impl TranscriptionService {
-    pub fn new(model_path: PathBuf) -> Result<Self, String> {
-        let (tx, rx) = std::sync::mpsc::channel::<JobRequest>();
-        let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<(), String>>();
+    pub fn new() -> Self {
+        Self {
+            tx: None,
+            ready: Arc::new(AtomicBool::new(false)),
+            info: None,
+        }
+    }
 
-        std::thread::Builder::new()
+    pub fn init(&mut self, source: ModelSource) -> Result<TranscriberInfo, String> {
+        if let Some(info) = &self.info {
+            if self.tx.is_some() && self.ready.load(Ordering::SeqCst) {
+                return Ok(info.clone());
+            }
+        }
+
+        let (tx, rx) = mpsc::channel::<JobRequest>();
+        let (ready_tx, ready_rx) = mpsc::sync_channel::<Result<TranscriberInfo, String>>(1);
+        let ready = Arc::new(AtomicBool::new(false));
+        let ready_flag = ready.clone();
+
+        thread::Builder::new()
             .name("whisper-transcriber".into())
             .spawn(move || {
-                let ctx = match WhisperContext::new_with_params(
-                    model_path.to_string_lossy().as_ref(),
-                    WhisperContextParameters::default(),
-                ) {
-                    Ok(ctx) => {
-                        let _ = ready_tx.send(Ok(()));
-                        ctx
-                    }
+                let started = std::time::Instant::now();
+                let threads = available_threads();
+                let model_name = match &source {
+                    ModelSource::Path(p) => p
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("ggml-base.en-q5_1.bin")
+                        .to_string(),
+                    ModelSource::AndroidAsset(_) => "ggml-base.en-q5_1.bin".to_string(),
+                };
+
+                let load_result: Result<(WhisperContext, WhisperState), String> = (|| {
+                    let ctx = load_context(&source)?;
+                    let state = ctx
+                        .create_state()
+                        .map_err(|e| format!("No se pudo crear el estado de Whisper: {e}"))?;
+                    Ok((ctx, state))
+                })(
+                );
+
+                let (ctx, mut state) = match load_result {
+                    Ok(v) => v,
                     Err(e) => {
-                        let _ = ready_tx.send(Err(format!("No se pudo cargar el modelo Whisper: {e}")));
+                        let _ = ready_tx.send(Err(e));
                         return;
                     }
                 };
 
+                let info = TranscriberInfo {
+                    engine: "native".to_string(),
+                    threads,
+                    model: model_name,
+                    model_load_ms: started.elapsed().as_millis() as u64,
+                };
+                ready_flag.store(true, Ordering::SeqCst);
+                let _ = ready_tx.send(Ok(info));
+
                 while let Ok(job) = rx.recv() {
-                    let result = transcribe_with_ctx(&ctx, &job.audio, job.prompt.as_deref());
+                    let result = transcribe_with_ctx(
+                        &ctx,
+                        &mut state,
+                        &job.audio,
+                        job.prompt.as_deref(),
+                        threads,
+                    );
                     let _ = job.resp.send(result);
                 }
             })
             .map_err(|e| format!("No se pudo iniciar el hilo de transcripción: {e}"))?;
 
-        ready_rx
-            .recv()
+        let info = ready_rx
+            .recv_timeout(Duration::from_secs(180))
             .map_err(|_| "El transcriptor no respondió al iniciar".to_string())??;
 
-        Ok(Self { tx })
+        self.tx = Some(tx);
+        self.ready = ready;
+        self.info = Some(info.clone());
+        Ok(info)
     }
 
-    pub fn sender(&self) -> std::sync::mpsc::Sender<JobRequest> {
-        self.tx.clone()
+    pub fn transcribe(&self, audio: Vec<f32>, prompt: Option<String>) -> Result<String, String> {
+        let tx = self.sender()?;
+        let (resp_tx, resp_rx) = mpsc::channel();
+        tx.send(JobRequest {
+            audio,
+            prompt,
+            resp: resp_tx,
+        })
+        .map_err(|_| "El transcriptor no está disponible".to_string())?;
+        resp_rx
+            .recv_timeout(Duration::from_secs(600))
+            .map_err(|_| "La transcripción tardó demasiado".to_string())?
+    }
+
+    pub fn sender(&self) -> Result<mpsc::Sender<JobRequest>, String> {
+        let tx = self
+            .tx
+            .as_ref()
+            .ok_or_else(|| "El transcriptor no está inicializado".to_string())?;
+        if !self.ready.load(Ordering::SeqCst) {
+            return Err("El transcriptor no está listo".to_string());
+        }
+        Ok(tx.clone())
+    }
+
+    pub fn info(&self) -> Option<TranscriberInfo> {
+        self.info.clone()
     }
 }
 
-#[cfg(not(target_os = "android"))]
-fn transcribe_with_ctx(ctx: &WhisperContext, audio: &[f32], prompt: Option<&str>) -> Result<String, String> {
+fn load_context(source: &ModelSource) -> Result<WhisperContext, String> {
+    let mut params = WhisperContextParameters::default();
+    params.use_gpu(false);
+    match source {
+        ModelSource::Path(path) => {
+            WhisperContext::new_with_params(path.to_string_lossy().as_ref(), params)
+                .map_err(|e| format!("No se pudo cargar el modelo Whisper: {e}"))
+        }
+        ModelSource::AndroidAsset(path) => {
+            #[cfg(target_os = "android")]
+            {
+                let bytes = read_android_asset(path)?;
+                WhisperContext::new_from_buffer_with_params(&bytes, params)
+                    .map_err(|e| format!("No se pudo cargar el modelo Whisper desde asset: {e}"))
+            }
+            #[cfg(not(target_os = "android"))]
+            {
+                let _ = path;
+                Err("Asset Android no disponible en esta plataforma".to_string())
+            }
+        }
+    }
+}
+
+fn transcribe_with_ctx(
+    _ctx: &WhisperContext,
+    state: &mut WhisperState,
+    audio: &[f32],
+    prompt: Option<&str>,
+    threads: i32,
+) -> Result<String, String> {
     if audio.len() < 1600 {
         return Ok(String::new());
     }
@@ -80,15 +203,16 @@ fn transcribe_with_ctx(ctx: &WhisperContext, audio: &[f32], prompt: Option<&str>
     params.set_print_timestamps(false);
     params.set_token_timestamps(false);
     params.set_temperature(0.0);
+    params.set_temperature_inc(0.0);
     params.set_max_len(80);
-    params.set_n_threads(available_threads());
+    params.set_n_threads(threads);
+    params.set_no_speech_thold(0.6);
+    params.set_suppress_blank(true);
+    params.set_suppress_nst(true);
     if let Some(p) = prompt.filter(|p| !p.trim().is_empty()) {
         params.set_initial_prompt(p);
     }
 
-    let mut state = ctx
-        .create_state()
-        .map_err(|e| format!("No se pudo crear el estado de Whisper: {e}"))?;
     state
         .full(params, audio)
         .map_err(|e| format!("No se pudo transcribir el audio: {e}"))?;
@@ -109,7 +233,6 @@ fn transcribe_with_ctx(ctx: &WhisperContext, audio: &[f32], prompt: Option<&str>
     Ok(sanitize(&out, audio.len() as f64 / 16000.0))
 }
 
-#[cfg(not(target_os = "android"))]
 fn available_threads() -> i32 {
     let n = std::thread::available_parallelism()
         .map(|n| n.get() as i32)
@@ -117,7 +240,6 @@ fn available_threads() -> i32 {
     (n - 1).clamp(1, 4)
 }
 
-#[cfg(not(target_os = "android"))]
 fn sanitize(text: &str, duration: f64) -> String {
     let cleaned = text
         .replace("[BLANK_AUDIO]", " ")
@@ -165,11 +287,4 @@ fn sanitize(text: &str, duration: f64) -> String {
         return String::new();
     }
     collapsed
-}
-
-#[cfg(target_os = "android")]
-impl TranscriptionService {
-    pub fn new(_model_path: PathBuf) -> Result<Self, String> {
-        Ok(Self)
-    }
 }
