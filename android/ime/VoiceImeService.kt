@@ -13,8 +13,8 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
+import android.inputmethodservice.InputMethodService
 import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodService
 import android.widget.LinearLayout
 import android.widget.TextView
 import java.io.File
