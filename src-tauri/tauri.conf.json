@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "identifier": "com.englishrecord.app",
   "build": {
-    "beforeDevCommand": "node scripts/prepare-tauri-models.mjs && npm run dev",
-    "beforeBuildCommand": "node scripts/prepare-tauri-models.mjs && npm run build",
+    "beforeDevCommand": "node scripts/prepare-tauri-models.mjs && node scripts/prepare-android-ime.mjs && npm run dev",
+    "beforeBuildCommand": "node scripts/prepare-tauri-models.mjs && node scripts/prepare-android-ime.mjs && npm run build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../dist"
   },

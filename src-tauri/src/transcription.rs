@@ -36,6 +36,7 @@ pub enum ModelSource {
 pub(crate) struct JobRequest {
     pub audio: Vec<f32>,
     pub prompt: Option<String>,
+    pub quality: bool,
     pub resp: mpsc::Sender<Result<String, String>>,
 }
 
@@ -112,6 +113,7 @@ impl TranscriptionService {
                         &mut state,
                         &job.audio,
                         job.prompt.as_deref(),
+                        job.quality,
                         threads,
                     );
                     let _ = job.resp.send(result);
@@ -129,12 +131,18 @@ impl TranscriptionService {
         Ok(info)
     }
 
-    pub fn transcribe(&self, audio: Vec<f32>, prompt: Option<String>) -> Result<String, String> {
+    pub fn transcribe(
+        &self,
+        audio: Vec<f32>,
+        prompt: Option<String>,
+        quality: bool,
+    ) -> Result<String, String> {
         let tx = self.sender()?;
         let (resp_tx, resp_rx) = mpsc::channel();
         tx.send(JobRequest {
             audio,
             prompt,
+            quality,
             resp: resp_tx,
         })
         .map_err(|_| "El transcriptor no está disponible".to_string())?;
@@ -188,13 +196,22 @@ fn transcribe_with_ctx(
     state: &mut WhisperState,
     audio: &[f32],
     prompt: Option<&str>,
+    quality: bool,
     threads: i32,
 ) -> Result<String, String> {
     if audio.len() < 1600 {
         return Ok(String::new());
     }
 
-    let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+    let strategy = if quality {
+        SamplingStrategy::BeamSearch {
+            beam_size: 5,
+            patience: -1.0,
+        }
+    } else {
+        SamplingStrategy::Greedy { best_of: 1 }
+    };
+    let mut params = FullParams::new(strategy);
     params.set_language(Some("en"));
     params.set_translate(false);
     params.set_print_special(false);
@@ -203,8 +220,7 @@ fn transcribe_with_ctx(
     params.set_print_timestamps(false);
     params.set_token_timestamps(false);
     params.set_temperature(0.0);
-    params.set_temperature_inc(0.0);
-    params.set_max_len(80);
+    params.set_temperature_inc(0.2);
     params.set_n_threads(threads);
     params.set_no_speech_thold(0.6);
     params.set_suppress_blank(true);
@@ -247,13 +263,20 @@ fn sanitize(text: &str, duration: f64) -> String {
         .replace("[silence]", " ")
         .replace("[inaudible]", " ")
         .replace("[music]", " ")
+        .replace("[musical]", " ")
         .replace("[applause]", " ")
+        .replace("[laughter]", " ")
         .replace("[noise]", " ")
         .replace("(silence)", " ")
         .replace("(inaudible)", " ")
         .replace("(music)", " ")
         .replace("(applause)", " ")
-        .replace("(noise)", " ");
+        .replace("(laughter)", " ")
+        .replace("(noise)", " ")
+        .replace('♪', " ")
+        .replace('♫', " ")
+        .replace('♬', " ")
+        .replace('♩', " ");
 
     let collapsed = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
     let bare: String = collapsed
@@ -265,15 +288,22 @@ fn sanitize(text: &str, duration: f64) -> String {
         return String::new();
     }
 
-    if duration < 2.2 {
+    if duration < 2.6 {
         let hallucinations = [
             "thankyou",
+            "thankyouverymuch",
             "thanksforwatching",
+            "thanksforlistening",
             "pleasesubscribe",
             "subscribe",
+            "goodbye",
+            "goodnight",
+            "music",
+            "applause",
             "you",
             "bye",
             "okay",
+            "oh",
             "mmhmm",
             "uhhuh",
         ];
@@ -283,7 +313,18 @@ fn sanitize(text: &str, duration: f64) -> String {
     }
 
     let lower = collapsed.to_lowercase();
-    if (lower.starts_with("please subscribe") || lower.starts_with("subscribe")) && duration < 4.0 {
+    let artifact = [
+        "thanks for watching",
+        "thank you for watching",
+        "please subscribe",
+        "please like and subscribe",
+        "subscribe to my channel",
+        "subscribe to the channel",
+        "subtitles by",
+        "transcribed by",
+        "amara.org",
+    ];
+    if duration < 6.0 && artifact.iter().any(|pattern| lower.contains(pattern)) {
         return String::new();
     }
     collapsed

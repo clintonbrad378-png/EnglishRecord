@@ -9,6 +9,7 @@ export interface TranscribeRequest {
   id: number;
   audio: ArrayBuffer;
   prompt?: string;
+  quality?: boolean;
 }
 
 export type WorkerRequest = InitRequest | TranscribeRequest;

@@ -7,6 +7,7 @@ interface Job {
   id: number;
   audio: Float32Array;
   prompt?: string;
+  quality?: boolean;
   resolve: (text: string) => void;
   reject: (error: Error) => void;
   timer: number;
@@ -36,7 +37,7 @@ export class WebTranscriber {
     return () => this.listeners.delete(listener);
   }
 
-  transcribe(audio: Float32Array, prompt?: string): Promise<string> {
+  transcribe(audio: Float32Array, prompt?: string, options?: { quality?: boolean }): Promise<string> {
     if (this.state.status === 'error') {
       return Promise.reject(new Error(this.state.error ?? 'El transcriptor no está disponible.'));
     }
@@ -46,6 +47,7 @@ export class WebTranscriber {
         id: ++this.sequence,
         audio,
         prompt,
+        quality: options?.quality,
         resolve,
         reject,
         timer: 0,
@@ -167,6 +169,7 @@ export class WebTranscriber {
       id: job.id,
       audio,
       prompt: job.prompt,
+      quality: job.quality,
     };
     const started = performance.now();
     const audioSeconds = job.audio.length / 16000;

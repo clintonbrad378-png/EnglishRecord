@@ -108,10 +108,29 @@ export function countWords(text: string): number {
     .filter(Boolean).length;
 }
 
+const ANNOTATION = 'blank_?audio|silence|inaudible|musical|música|musica|music|applause|laughter|laughing|sighs?|breathing|coughing|noise|static';
+
+export function buildContextPrompt(parts: string[]): string | undefined {
+  const text = parts.join(' ').replace(/\s+/g, ' ').trim();
+  if (!text) return undefined;
+  if (text.length <= 180) return text;
+  const tail = text.slice(-180);
+  const cut = tail.search(/\s/);
+  const prompt = (cut > 0 ? tail.slice(cut + 1) : tail).trim();
+  return prompt || undefined;
+}
+
 export function cleanTranscriptText(text: string): string {
   return text
-    .replace(/\[(?:blank_?audio|silence|inaudible|music|applause|noise)\]/gi, ' ')
-    .replace(/\((?:silence|inaudible|music|applause|noise)\)/gi, ' ')
+    .replace(new RegExp(`\\[(?:${ANNOTATION})[^\\]]*\\]`, 'gi'), ' ')
+    .replace(new RegExp(`\\((?:${ANNOTATION})[^)]*\\)`, 'gi'), ' ')
+    .replace(/[♪♫♬♩]/g, ' ')
+    .replace(/\b([\p{L}\p{N}'’]+(?:\s+[\p{L}\p{N}'’]+){0,2})(?:\s+\1\b){2,}/giu, '$1')
+    .replace(
+      /\b(you|oh|yeah|okay|ok|no|yes|bye|thanks|thank|please|the|and|so)\b(?:\s+\1\b)+/giu,
+      '$1',
+    )
+    .replace(/\s+([,.!?;:])/g, '$1')
     .replace(/\s+/g, ' ')
     .trim();
 }

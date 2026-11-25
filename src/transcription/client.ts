@@ -3,10 +3,14 @@ import type { TranscriberState } from '../types';
 import { TauriTranscriber } from './tauri-transcriber';
 import { WebTranscriber } from './web-transcriber';
 
+export interface TranscribeOptions {
+  quality?: boolean;
+}
+
 export interface TranscriberLike {
   getState(): TranscriberState;
   onState(listener: (state: TranscriberState) => void): () => void;
-  transcribe(audio: Float32Array, prompt?: string): Promise<string>;
+  transcribe(audio: Float32Array, prompt?: string, options?: TranscribeOptions): Promise<string>;
   retry(): void;
   dispose(): void;
 }
@@ -51,8 +55,8 @@ export class Transcriber implements TranscriberLike {
     return () => this.listeners.delete(listener);
   }
 
-  transcribe(audio: Float32Array, prompt?: string): Promise<string> {
-    return this.impl.transcribe(audio, prompt);
+  transcribe(audio: Float32Array, prompt?: string, options?: TranscribeOptions): Promise<string> {
+    return this.impl.transcribe(audio, prompt, options);
   }
 
   retry(): void {

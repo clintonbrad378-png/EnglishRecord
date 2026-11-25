@@ -14,6 +14,7 @@ interface Job {
   id: number;
   audio: Float32Array;
   prompt?: string;
+  quality?: boolean;
   resolve: (text: string) => void;
   reject: (error: Error) => void;
   timer: number;
@@ -51,7 +52,7 @@ export class TauriTranscriber {
     return () => this.listeners.delete(listener);
   }
 
-  transcribe(audio: Float32Array, prompt?: string): Promise<string> {
+  transcribe(audio: Float32Array, prompt?: string, options?: { quality?: boolean }): Promise<string> {
     if (this.state.status === 'error') {
       return Promise.reject(new Error(this.state.error ?? 'El transcriptor no está disponible.'));
     }
@@ -60,6 +61,7 @@ export class TauriTranscriber {
         id: ++this.sequence,
         audio,
         prompt,
+        quality: options?.quality,
         resolve,
         reject,
         timer: 0,
@@ -135,6 +137,7 @@ export class TauriTranscriber {
     void invoke<string>('transcribe_audio', {
       audioBase64: toBase64(job.audio),
       prompt: job.prompt ?? null,
+      quality: job.quality ?? false,
     })
       .then((text) => {
         if (this.current?.id !== job.id) return;

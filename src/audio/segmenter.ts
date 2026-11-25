@@ -21,12 +21,20 @@ interface SegmenterOptions {
   vad: VadEngine;
   onSegment: (segment: SpeechSegment) => void;
   onVadError?: (error: Error) => void;
+  maxSegmentSamples?: number;
+  tailSamples?: number;
+  silenceHits?: number;
+  ringWindows?: number;
 }
 
 export class SpeechSegmenter {
   private readonly vad: VadEngine;
   private readonly onSegment: (segment: SpeechSegment) => void;
   private readonly onVadError?: (error: Error) => void;
+  private readonly maxSegmentSamples: number;
+  private readonly tailSamples: number;
+  private readonly silenceHitsLimit: number;
+  private readonly ringWindowsLimit: number;
 
   private leftover = new Float32Array(0);
   private ringWindows: Float32Array[] = [];
@@ -47,6 +55,10 @@ export class SpeechSegmenter {
     this.vad = options.vad;
     this.onSegment = options.onSegment;
     this.onVadError = options.onVadError;
+    this.maxSegmentSamples = options.maxSegmentSamples ?? MAX_SEGMENT_SAMPLES;
+    this.tailSamples = options.tailSamples ?? TAIL_SAMPLES;
+    this.silenceHitsLimit = options.silenceHits ?? SILENCE_HITS;
+    this.ringWindowsLimit = options.ringWindows ?? RING_WINDOWS;
   }
 
   get engine(): string {
@@ -148,13 +160,13 @@ export class SpeechSegmenter {
       this.silenceHits += 1;
     }
 
-    if (this.activeSamples >= MAX_SEGMENT_SAMPLES) {
+    if (this.activeSamples >= this.maxSegmentSamples) {
       this.finishSegment(this.totalSamples, true);
       return;
     }
 
-    if (this.silenceHits >= SILENCE_HITS) {
-      this.finishSegment(Math.min(this.totalSamples, this.lastSpeechEnd + TAIL_SAMPLES));
+    if (this.silenceHits >= this.silenceHitsLimit) {
+      this.finishSegment(Math.min(this.totalSamples, this.lastSpeechEnd + this.tailSamples));
     }
   }
 
@@ -194,7 +206,7 @@ export class SpeechSegmenter {
 
   private pushRing(window: Float32Array): void {
     this.ringWindows.push(window.slice());
-    if (this.ringWindows.length > RING_WINDOWS) this.ringWindows.shift();
+    if (this.ringWindows.length > this.ringWindowsLimit) this.ringWindows.shift();
   }
 }
 

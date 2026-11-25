@@ -1,5 +1,5 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::transcription::{ModelSource, TranscriberInfo, TranscriberState};
 
@@ -77,6 +77,7 @@ pub async fn init_transcriber(
 pub async fn transcribe_audio(
     audio_base64: String,
     prompt: Option<String>,
+    quality: Option<bool>,
     state: State<'_, TranscriberState>,
 ) -> Result<String, String> {
     let bytes = STANDARD
@@ -106,6 +107,7 @@ pub async fn transcribe_audio(
         tx.send(crate::transcription::JobRequest {
             audio,
             prompt,
+            quality: quality.unwrap_or(false),
             resp: resp_tx,
         })
         .map_err(|_| "El transcriptor no está disponible".to_string())?;

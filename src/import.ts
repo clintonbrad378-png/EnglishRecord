@@ -1,6 +1,6 @@
 import { SpeechSegmenter, type SpeechSegment } from './audio/segmenter';
 import { EnergyVad } from './audio/vad';
-import { cleanTranscriptText, countWords } from './lib/format';
+import { buildContextPrompt, cleanTranscriptText, countWords } from './lib/format';
 import { getAudio, requestPersistence, saveMeta, saveRecording } from './lib/storage';
 import { computePeaks, decodeWav, encodeWav, float32ToPcm16 } from './lib/wav';
 import type { TranscriptSession } from './session';
@@ -13,6 +13,8 @@ const MAX_MERGE_GAP_SAMPLES = Math.round(3 * SAMPLE_RATE);
 const MAX_IMPORT_SECONDS = 20 * 60;
 const MAX_FILE_BYTES = 80 * 1024 * 1024;
 const SILENCE_RMS = 0.002;
+const IMPORT_TAIL_SAMPLES = Math.round(0.4 * SAMPLE_RATE);
+const HIGHPASS_HZ = 70;
 
 interface ImportOptions {
   transcriber: Transcriber;
@@ -211,6 +213,8 @@ export class ImportSession implements TranscriptSession {
     this.pendingJobs = 1;
     this.emit();
 
+    prepareAudioForAsr(this.samples);
+
     try {
       let chunks: ChunkRange[] = [];
       try {
@@ -242,9 +246,9 @@ export class ImportSession implements TranscriptSession {
       for (const chunk of chunks) {
         if (this.deleted) break;
         const audio = this.samples.slice(chunk.start, chunk.end);
-        const prompt = this.transcript.map((item) => item.text).join(' ').slice(-180);
+        const prompt = buildContextPrompt(this.transcript.map((item) => item.text));
         try {
-          const raw = await this.transcriber.transcribe(audio, prompt || undefined);
+          const raw = await this.transcriber.transcribe(audio, prompt, { quality: true });
           const text = cleanTranscriptText(raw);
           if (text) {
             this.transcript.push({
@@ -297,6 +301,8 @@ export async function findSpeechChunks(samples: Float32Array): Promise<ChunkRang
     onSegment: (segment: SpeechSegment) => {
       segments.push({ startSample: segment.startSample, endSample: segment.endSample });
     },
+    maxSegmentSamples: MAX_CHUNK_SAMPLES,
+    tailSamples: IMPORT_TAIL_SAMPLES,
   });
 
   try {
@@ -388,6 +394,63 @@ export function resampleLinear(input: Float32Array, from: number, to: number): F
     output[i] = a + (b - a) * fraction;
   }
   return output;
+}
+
+export function prepareAudioForAsr(samples: Float32Array, sampleRate = SAMPLE_RATE): void {
+  if (samples.length === 0) return;
+
+  highPass(samples, sampleRate, HIGHPASS_HZ);
+
+  let peak = 0;
+  let sum = 0;
+  for (let i = 0; i < samples.length; i += 1) {
+    const value = samples[i];
+    const magnitude = Math.abs(value);
+    if (magnitude > peak) peak = magnitude;
+    sum += value * value;
+  }
+  if (peak === 0) return;
+
+  const rms = Math.sqrt(sum / samples.length);
+  const peakGain = 0.95 / peak;
+  let gain = 1;
+  if (peakGain < 1) {
+    gain = peakGain;
+  } else if (rms > 0 && rms < 0.03) {
+    gain = Math.min(0.08 / rms, peakGain, 8);
+  }
+
+  if (Math.abs(gain - 1) < 0.02) return;
+  for (let i = 0; i < samples.length; i += 1) {
+    const value = samples[i] * gain;
+    samples[i] = value > 1 ? 1 : value < -1 ? -1 : value;
+  }
+}
+
+function highPass(samples: Float32Array, sampleRate: number, cutoff: number): void {
+  const w0 = (2 * Math.PI * cutoff) / sampleRate;
+  const cos = Math.cos(w0);
+  const alpha = Math.sin(w0) / Math.SQRT2;
+  const a0 = 1 + alpha;
+  const b0 = (1 + cos) / 2 / a0;
+  const b1 = -(1 + cos) / a0;
+  const b2 = b0;
+  const a1 = (-2 * cos) / a0;
+  const a2 = (1 - alpha) / a0;
+
+  let x1 = 0;
+  let x2 = 0;
+  let y1 = 0;
+  let y2 = 0;
+  for (let i = 0; i < samples.length; i += 1) {
+    const x = samples[i];
+    const y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    x2 = x1;
+    x1 = x;
+    y2 = y1;
+    y1 = y;
+    samples[i] = y;
+  }
 }
 
 function rms(samples: Float32Array): number {

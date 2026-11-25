@@ -1,6 +1,8 @@
 #[cfg(target_os = "android")]
 mod android_assets;
 mod commands;
+#[cfg(target_os = "android")]
+mod ime;
 mod storage;
 mod transcription;
 
@@ -30,6 +32,7 @@ pub fn run() {
             commands::recordings::storage_info,
             commands::transcribe::init_transcriber,
             commands::transcribe::transcribe_audio,
+            commands::keyboard::open_keyboard_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running English Record");

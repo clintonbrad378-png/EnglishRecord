@@ -2,7 +2,7 @@ import { MicrophoneRecorder } from './audio/recorder';
 import { SpeechSegmenter, type SpeechSegment } from './audio/segmenter';
 import { EnergyVad, type VadEngine } from './audio/vad';
 import { requestPersistence, saveMeta, saveRecording } from './lib/storage';
-import { cleanTranscriptText, countWords, makeTitle } from './lib/format';
+import { buildContextPrompt, cleanTranscriptText, countWords, makeTitle } from './lib/format';
 import { encodeWav, float32ToPcm16 } from './lib/wav';
 import type { Transcriber } from './transcription/client';
 import type { RecordingMeta, TranscriptChunk } from './types';
@@ -308,13 +308,10 @@ export class RecordingSession implements TranscriptSession {
 
     const start = segment.startSample / 16000;
     const end = segment.endSample / 16000;
-    const prompt = this.transcript
-      .map((chunk) => chunk.text)
-      .join(' ')
-      .slice(-180);
+    const prompt = buildContextPrompt(this.transcript.map((chunk) => chunk.text));
 
     this.transcriber
-      .transcribe(segment.audio, prompt || undefined)
+      .transcribe(segment.audio, prompt)
       .then((rawText) => {
         const text = cleanTranscriptText(rawText);
         if (!text) return;

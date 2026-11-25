@@ -12,6 +12,7 @@ interface SettingsCallbacks {
   onTheme: (mode: ThemeMode) => void;
   onRetryTranscriber: () => void;
   onInstall: () => Promise<void>;
+  onKeyboardSettings: () => Promise<boolean>;
 }
 
 interface StorageInfo {
@@ -89,6 +90,24 @@ export class SettingsView {
           </div>
         </section>
 
+        <section class="settings-group" data-role="keyboard-group" hidden>
+          <h3>Teclado de voz</h3>
+          <div class="settings-card">
+            <button class="setting-action" data-action="keyboard">
+              <span class="setting-action-icon">${icon('mic', 21)}</span>
+              <span class="setting-action-copy">
+                <strong>Dictar en otras apps</strong>
+                <small>Activa el teclado English Record en Android y escribe con la voz en cualquier aplicación.</small>
+              </span>
+              ${icon('arrow-right', 18)}
+            </button>
+            <div class="setting-list">
+              <div class="setting-line"><span>Procesamiento</span><strong>En el dispositivo</strong></div>
+              <div class="setting-line"><span>Idioma</span><strong>Inglés</strong></div>
+            </div>
+          </div>
+        </section>
+
         <section class="settings-group">
           <h3>Almacenamiento</h3>
           <div class="settings-card storage-card" data-role="storage">
@@ -143,6 +162,11 @@ export class SettingsView {
     this.installButton = q(element, '[data-action="install"]');
     this.installHint = q(element, '[data-role="install-hint"]');
 
+    const keyboardGroup = element.querySelector<HTMLElement>('[data-role="keyboard-group"]');
+    if (keyboardGroup) {
+      keyboardGroup.hidden = !(isTauri() && /Android/i.test(navigator.userAgent));
+    }
+
     element.addEventListener('click', (event) => {
       const target = event.target as HTMLElement;
       const theme = target.closest<HTMLElement>('[data-theme]')?.dataset.theme as ThemeMode | undefined;
@@ -154,6 +178,7 @@ export class SettingsView {
       if (action === 'back') this.callbacks.onBack();
       else if (action === 'install') void this.install();
       else if (action === 'persist') void this.persist();
+      else if (action === 'keyboard') void this.openKeyboard();
       else if (action === 'retry-model') this.callbacks.onRetryTranscriber();
     });
 
@@ -283,6 +308,13 @@ export class SettingsView {
       return;
     }
     await this.callbacks.onInstall();
+  }
+
+  private async openKeyboard(): Promise<void> {
+    const opened = await this.callbacks.onKeyboardSettings();
+    if (!opened) {
+      toast('El teclado de voz está disponible en la app de Android.', { icon: 'info' });
+    }
   }
 
   private async persist(): Promise<void> {

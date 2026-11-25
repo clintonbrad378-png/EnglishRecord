@@ -55,10 +55,10 @@ async function transcribe(message: TranscribeRequest): Promise<void> {
       translate: false,
       tokenTimestamps: false,
       temperature: 0,
-      temperatureInc: 0,
+      temperatureInc: 0.2,
       maxThreads: threads,
-      maxLen: 80,
       prompt: message.prompt,
+      ...(message.quality ? { beamSize: 5 } : {}),
     });
     const result = await job.promise;
     const duration = audio.length / 16000;
@@ -73,32 +73,47 @@ async function transcribe(message: TranscribeRequest): Promise<void> {
   }
 }
 
+const ANNOTATION = 'blank_?audio|silence|inaudible|music|musical|applause|laughter|laughing|sighs?|breathing|coughing|noise|static';
+
 function sanitize(text: string, duration: number): string {
   const cleaned = text
-    .replace(/\[(?:blank_?audio|silence|inaudible|music|applause|noise)\]/gi, ' ')
-    .replace(/\((?:silence|inaudible|music|applause|noise)\)/gi, ' ')
+    .replace(new RegExp(`\\[(?:${ANNOTATION})[^\\]]*\\]`, 'gi'), ' ')
+    .replace(new RegExp(`\\((?:${ANNOTATION})[^)]*\\)`, 'gi'), ' ')
+    .replace(/[♪♫♬♩]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
   const bare = cleaned.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
   if (!bare) return '';
 
-  if (duration < 2.2) {
+  if (duration < 2.6) {
     const hallucinations = new Set([
       'thankyou',
+      'thankyouverymuch',
       'thanksforwatching',
+      'thanksforlistening',
       'pleasesubscribe',
       'subscribe',
+      'goodbye',
+      'goodnight',
+      'music',
+      'applause',
       'you',
       'bye',
       'okay',
+      'oh',
       'mmhmm',
       'uhhuh',
     ]);
     if (hallucinations.has(bare)) return '';
   }
 
-  if (/^(please\s+)?subscribe/i.test(cleaned) && duration < 4) return '';
+  if (
+    duration < 6 &&
+    /(?:thanks? for watching|please (?:like and )?subscribe|subscribe to (?:my|the) channel|subtitles? by|transcribed by|amara\.org)/i.test(cleaned)
+  ) {
+    return '';
+  }
   return cleaned;
 }
 

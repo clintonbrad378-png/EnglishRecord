@@ -1,5 +1,6 @@
+import { invoke } from '@tauri-apps/api/core';
 import { VadProvider } from './audio/vad-provider';
-import { cleanTranscriptText, countWords, makeTitle } from './lib/format';
+import { buildContextPrompt, cleanTranscriptText, countWords, makeTitle } from './lib/format';
 import { brandMark } from './lib/icons';
 import { isTauri } from './lib/tauri';
 import {
@@ -10,7 +11,7 @@ import {
   saveMeta,
 } from './lib/storage';
 import { decodeWav } from './lib/wav';
-import { decodeAudioFile, findSpeechChunks, ImportSession, resampleLinear } from './import';
+import { decodeAudioFile, findSpeechChunks, ImportSession, prepareAudioForAsr, resampleLinear } from './import';
 import { RecordingSession, type TranscriptSession } from './session';
 import { Transcriber } from './transcription/client';
 import type { RecordingMeta, Route, TranscriberState, TranscriptChunk } from './types';
@@ -221,6 +222,7 @@ export class App {
       onTheme: (mode) => setThemeMode(mode),
       onRetryTranscriber: () => this.transcriber.retry(),
       onInstall: () => this.promptInstall(),
+      onKeyboardSettings: () => this.openKeyboardSettings(),
     });
     view.setTranscriber(this.transcriberState);
     view.setInstallAvailable(this.installAvailable);
@@ -552,14 +554,15 @@ export class App {
 
     const { samples, sampleRate } = decodeWav(await blob.arrayBuffer());
     const mono = sampleRate === 16000 ? samples : resampleLinear(samples, sampleRate, 16000);
+    prepareAudioForAsr(mono);
     const chunks = await findSpeechChunks(mono);
     const ranges = chunks.length > 0 ? chunks : [{ start: 0, end: mono.length }];
     const transcript: TranscriptChunk[] = [];
     let seq = 0;
     for (const range of ranges) {
       const audio = mono.slice(range.start, range.end);
-      const prompt = transcript.map((item) => item.text).join(' ').slice(-180);
-      const raw = await this.transcriber.transcribe(audio, prompt || undefined);
+      const prompt = buildContextPrompt(transcript.map((item) => item.text));
+      const raw = await this.transcriber.transcribe(audio, prompt, { quality: true });
       const text = cleanTranscriptText(raw);
       if (!text) continue;
       transcript.push({
@@ -621,6 +624,15 @@ export class App {
     this.installPrompt = null;
     this.installAvailable = false;
     this.settingsView?.setInstallAvailable(false);
+  }
+
+  private async openKeyboardSettings(): Promise<boolean> {
+    if (!isTauri()) return false;
+    try {
+      return await invoke<boolean>('open_keyboard_settings');
+    } catch {
+      return false;
+    }
   }
 }
 
